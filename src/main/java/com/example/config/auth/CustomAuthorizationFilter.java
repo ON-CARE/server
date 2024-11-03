@@ -18,7 +18,7 @@ import java.io.IOException;
 
 @Slf4j
 @RequiredArgsConstructor
-public class CustomAuthorizationFilter extends OncePerRequestFilter {       //http 요청마다 처리하도록 하는 필터
+public class CustomAuthorizationFilter extends OncePerRequestFilter {
 
     private final TokenProvider tokenProvider;
     private final Authenticator authenticator;
@@ -30,48 +30,44 @@ public class CustomAuthorizationFilter extends OncePerRequestFilter {       //ht
 
         String servletPath = request.getServletPath();
 
-        if(servletPath.equals("/public/auth/signup") || servletPath.equals("/public/auth/login")) {
-            filterChain.doFilter(request, response);        //다음 필터 실행
+        // 특정 경로에 대해 JWT 검사를 건너뛰도록 예외 설정
+        if (servletPath.equals("/public/auth/signup")
+                || servletPath.equals("/public/auth/login")
+                || servletPath.equals("/api/facilities/nearby")) { // nearby 경로 예외 추가
+            filterChain.doFilter(request, response);
             return;
         }
 
         log.info("CustomAuthorizationFilter.class / doFilterInternal :" + servletPath +  ": 엑세스 토큰을 검사");
 
-        boolean nowCreated = false;         //엑세스 토큰이 이번에 만들어진 것인지 확인하는 변수
+        boolean nowCreated = false;
         String accessToken = tokenProvider.resolveToken(request);
 
-        // 엑세스 토큰 없으면 -> 다시 로그인 해야함
-        if(!StringUtils.hasText(accessToken)){
+        // 엑세스 토큰이 없을 경우 처리
+        if (!StringUtils.hasText(accessToken)) {
             log.info("CustomAuthorizationFilter.class / doFilterInternal : 엑세스 토큰 없음");
 
             String refreshToken = tokenProvider.getRefreshToken(request);
-
-            if(refreshToken != null){
+            if (refreshToken != null) {
                 boolean refreshTokenValid = tokenProvider.validateRefreshToken(refreshToken);
-                if(refreshTokenValid){      //리프레시 토큰이 유효하면 엑세스 토큰 새로 발급
-
+                if (refreshTokenValid) {
                     accessToken = tokenProvider.createNewAccessToken(refreshToken, response);
                     nowCreated = true;
-                }
-                else{
+                } else {
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
                     return;
                 }
-            }
-            else{
+            } else {
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setStatus(HttpStatus.UNAUTHORIZED.value());
                 return;
             }
         }
 
-        // 블랙리스트에 있으면 로그아웃되었거나, 토큰이 만료된 상태인 것임. 401에러 -> 다시 로그인 해야함.
-        if(!nowCreated && redisUtil.hasKey(accessToken)){
+        // 블랙리스트에 있으면 처리
+        if (!nowCreated && redisUtil.hasKey(accessToken)) {
             log.info("CustomAuthorizationFilter.class / doFilterInternal : 블랙리스트에 등록된 엑세스 토큰");
-
-            if(servletPath.equals("/attendance/member-attended")) filterChain.doFilter(request, response);        //다음 필터 실행
-
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             return;
@@ -79,24 +75,16 @@ public class CustomAuthorizationFilter extends OncePerRequestFilter {       //ht
 
         // access 토큰 유효성 검증
         String validatedAccessToken = tokenProvider.validateAccessToken(accessToken, request, response);
-
-        if(validatedAccessToken != null){
+        if (validatedAccessToken != null) {
             Authentication authentication = tokenProvider.getAuthentication(validatedAccessToken);
-
-            //토큰을 통해 생성한 Authentication 객체 스프링 시큐리티 컨텍스트에 저장
             authenticator.setAuthenticationInSecurityContext(authentication);
-
-        }
-        else{
+        } else {
             log.info("CustomAuthorizationFilter.class / doFilterInternal : JWT access 토큰, refresh 토큰 모두 유효하지 않음");
-
-            if(servletPath.equals("/attendance/member-attended")) filterChain.doFilter(request, response);        //다음 필터 실행
-
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             return;
         }
 
-        filterChain.doFilter(request, response);        //다음 필터 실행
+        filterChain.doFilter(request, response); // 다음 필터 실행
     }
 }

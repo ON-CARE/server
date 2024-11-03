@@ -90,3 +90,4 @@ logging:
   level:
     org.hibernate.SQL: debug    # 하이버네이트가 생성하는 sql 로그로 출력
     org.hibernate.orm.jdbc.bind: debug    # 쿼리 파라미터 로그 남김
+    org.springframework.web.client.RestTemplate: DEBUG
