@@ -40,34 +40,23 @@ public class SecurityConfig {
     private final MemberRepository memberRepository;
     private final RedisUtil redisUtil;
 
-    /*
-    비밀번호 암호화를 담당할 인코더 설정
-     */
     @Bean
-    public PasswordEncoder passwordEncoder(){
+    public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    /*
-    loadUserByUsername 을 사용하여 UserDetails 객체를 가져올 수 있도록 하는 설정
-    UserDetails는 시큐리티 컨텍스트에 사용자 정보를 담는 인터페이스
-     */
     @Bean
-    public UserDetailsService userDetailsService(){
+    public UserDetailsService userDetailsService() {
         return new CustomUserDetailsService(memberRepository);
     }
 
-    /*
-    커스텀 필터
-     */
     @Bean
-    public CustomAuthorizationFilter customAuthorizationFilter(){
+    public CustomAuthorizationFilter customAuthorizationFilter() {
         return new CustomAuthorizationFilter(tokenProvider, authenticator, redisUtil);
     }
 
-
     @Bean
-    public DaoAuthenticationProvider authenticationProvider(){
+    public DaoAuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
         provider.setUserDetailsService(userDetailsService());
         provider.setPasswordEncoder(passwordEncoder());
@@ -76,50 +65,36 @@ public class SecurityConfig {
     }
 
     @Bean
-    public WebSecurityCustomizer webSecurityCustomizer(){
+    public WebSecurityCustomizer webSecurityCustomizer() {
         return web -> web
                 .ignoring()
                 .requestMatchers("/swagger-ui/index.html", "/swagger-ui/**", "/v3/api-docs/**")
                 .requestMatchers("/public/**");
     }
 
-    /*
-    스프링 시큐리티 구성을 정의하는 필터체인 구성
-     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
         http
-                //API 통신을 하는 애플리케이션의 경우 csrf 공격을 받을 가능성이 없기 때문에 @EnableWebSecurity의 csrf 보호 기능을 해제
                 .csrf(csrf -> csrf.disable())
-
-                //jwt를 사용하기 때문에 세션 사용하지 않음
-                .sessionManagement((sessionManagement) -> sessionManagement.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-                //각 예외 인터페이스를 커스텀한 두 예외 등록. 401, 403 에러
+                .sessionManagement(sessionManagement -> sessionManagement.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler)
                 )
 
-                //http 요청에 대한 접근 권한을 설정
-                //로그인, 회원가입 api는 토큰이 없는 상태로 요청이 들어오기 때문에 permitAll()로 열어줌
+                // http 요청에 대한 접근 권한을 설정
                 .authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(PathRequest.toStaticResources().atCommonLocations()).permitAll()        //html, css같은 정적 리소스에 대해 접근 허용
+                        .requestMatchers(PathRequest.toStaticResources().atCommonLocations()).permitAll()
                         .requestMatchers("/public/**").permitAll()
+                        .requestMatchers("/api/facilities/nearby").permitAll() // JWT 없이 접근을 허용할 엔드포인트
                         .requestMatchers("/test").hasAnyAuthority("ROLE_USER")
-                        .anyRequest().authenticated()       //나머지 요청은 모두 권한 필요함.
-
+                        .anyRequest().authenticated()
                 )
 
                 // 헤더 관련 설정
-                .headers(headers ->
-                        headers.frameOptions(options ->
-                                options.sameOrigin()            //x-frame-option 설정
-
-                        )
-                );
+                .headers(headers -> headers.frameOptions(options -> options.sameOrigin()));
 
         http
                 .addFilterBefore(corsFilter, UsernamePasswordAuthenticationFilter.class)
@@ -127,6 +102,4 @@ public class SecurityConfig {
 
         return http.build();
     }
-
-
 }
